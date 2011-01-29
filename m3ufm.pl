@@ -28,7 +28,7 @@ my $SOURCE =
     {
         alias => 'ul',
         key => 'user',
-        rkey => [ lovedtracks => track => artist => 'name' ],
+        rkey => [ lovedtracks => track => [  ['name'], [ artist => 'name' ] ],
     }
 };
 #$SOURCE
@@ -91,6 +91,17 @@ sub request
     my @list;
     for my $item (@$ret)
     {
+        if (ref $item eq 'ARRAY')
+        {
+            my @resp;
+            for my $key (@)
+            {
+                my $data = $item
+            }
+
+            $artist = $artist->{$_}
+                
+        }
         $item = $item->{$_} for @{ $SOURCE->{$method}->{rkey} };
         print Dumper $item;
         push @list, $item;

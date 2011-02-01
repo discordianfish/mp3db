@@ -13,8 +13,9 @@ use DBI;
 use Data::Dumper;
 
 use constant DBFILE => 'files.db';
-use constant QUERY_ARTIST => 'SELECT path FROM files WHERE artist like ?';
-use constant QUERY_ARTIST_TITLE => 'SELECT path FROM files WHERE artist like ? AND title like ?';
+use constant QUERY_ARTIST => 'SELECT path, filesize FROM files WHERE artist like ?';
+use constant QUERY_ARTIST_TITLE => 'SELECT path, filesize FROM files WHERE artist like ? AND title like ?';
+use constant MEGABYTE => '1048576';
 
 my $SOURCE =
 {
@@ -28,7 +29,7 @@ my $SOURCE =
     {
         alias => 'ul',
         key => 'user',
-        rkey => [ lovedtracks => track => [  ['name'], [ artist => 'name' ] ],
+        rkey => [ lovedtracks => track => artist => 'name' ],
     }
 };
 #$SOURCE
@@ -37,9 +38,10 @@ my $SOURCE =
 #$SOURCE->{'User.getRecentTracks'} = { alias => 'ur =>  \&UserGetRecentTracks ];
 #$SOURCE->{'User.getRecommendedArtists'} = { alias =>  'ua => &UserGetRecommendedArtists ];
 
-sub usage { "$0 path/to/music/directory [ " . (join ', ', map { "$_|$SOURCE->{$_}->{alias}" } keys %$SOURCE) . ' ]' };
+sub usage { "$0 path/to/music/directory [ " . (join ', ', map { "$_|$SOURCE->{$_}->{alias}" } keys %$SOURCE) . ' ] [size]' };
 
-my ($ROOT, $SRC, $QUERY) = @ARGV;
+my ($ROOT, $SRC, $QUERY, $MAXSIZE) = @ARGV;
+$MAXSIZE = $MAXSIZE * MEGABYTE;
 
 die usage
     unless $QUERY;
@@ -59,10 +61,20 @@ my $response = request($METHOD => { $SOURCE->{$METHOD}->{key} => $QUERY });
 
 my $dbh = DBI->connect('dbi:SQLite:dbname=' . DBFILE ,'','');
 my $sth = $dbh->prepare(QUERY_ARTIST);
+my $size;
 for my $q (@$response)
 {
     $sth->execute($q);
-    print $_->{path}, "\n" while $_ = $sth->fetchrow_hashref;
+    while (my $row = $sth->fetchrow_hashref)
+    {
+        print Dumper($row), "\n";
+        $size += $row->{filesize};
+        if ($MAXSIZE && $size > $MAXSIZE)
+        {
+            warn "max file size of $MAXSIZE reached";
+            exit 0
+        }
+    }
 }
 
 
@@ -91,17 +103,6 @@ sub request
     my @list;
     for my $item (@$ret)
     {
-        if (ref $item eq 'ARRAY')
-        {
-            my @resp;
-            for my $key (@)
-            {
-                my $data = $item
-            }
-
-            $artist = $artist->{$_}
-                
-        }
         $item = $item->{$_} for @{ $SOURCE->{$method}->{rkey} };
         print Dumper $item;
         push @list, $item;

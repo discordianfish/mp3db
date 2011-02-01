@@ -8,14 +8,16 @@ use constant API_SECRET => '1eb39de237529c017494da040ff835a7';
 use File::Spec;
 use Cwd 'abs_path';
 use Net::LastFM;
+use Data::Diver 'Dive';
 use DBI;
 
-use Data::Dumper;
+#use Data::Dumper;
 
 use constant DBFILE => 'files.db';
-use constant QUERY_ARTIST => 'SELECT path, filesize FROM files WHERE artist like ?';
-use constant QUERY_ARTIST_TITLE => 'SELECT path, filesize FROM files WHERE artist like ? AND title like ?';
+use constant QUERY => 'SELECT path, artist, title, filesize, length FROM files WHERE ';
 use constant MEGABYTE => '1048576';
+use constant M3U_HEADER => '#EXTM3U';
+use constant M3U_EXTINF => '#EXTINF:%d,%s - %s' . "\n"; #secs, artist, title
 
 my $SOURCE =
 {
@@ -23,25 +25,27 @@ my $SOURCE =
     {
         alias => 'as',
         key => 'artist',
-        rkey => [ similarartists => artist => 'name' ],
+        rkey => [ similarartists => 'artist'],
+        rskey =>
+        {
+            artist => [ 'name' ],
+        }
     },
     'User.getLovedTracks' =>
     {
         alias => 'ul',
         key => 'user',
-        rkey => [ lovedtracks => track => artist => 'name' ],
+        rkey => [ lovedtracks => 'track' ],
+        rskey =>
+        {
+            artist => [ artist => 'name'],
+            title => [ 'name'],
+        }
     }
 };
-#$SOURCE
-#$SOURCE->{'User.getTopArtists'} = { alias => 'ut => \&UserGetTopArtists ];
-#$SOURCE->{'User.getLovedTracks'} = { alias => 'ul =>  \&UsergetLovedTracks ];
-#$SOURCE->{'User.getRecentTracks'} = { alias => 'ur =>  \&UserGetRecentTracks ];
-#$SOURCE->{'User.getRecommendedArtists'} = { alias =>  'ua => &UserGetRecommendedArtists ];
-
 sub usage { "$0 path/to/music/directory [ " . (join ', ', map { "$_|$SOURCE->{$_}->{alias}" } keys %$SOURCE) . ' ] [size]' };
 
 my ($ROOT, $SRC, $QUERY, $MAXSIZE) = @ARGV;
-$MAXSIZE = $MAXSIZE * MEGABYTE;
 
 die usage
     unless $QUERY;
@@ -60,16 +64,21 @@ my $LFM = Net::LastFM->new(
 my $response = request($METHOD => { $SOURCE->{$METHOD}->{key} => $QUERY });
 
 my $dbh = DBI->connect('dbi:SQLite:dbname=' . DBFILE ,'','');
-my $sth = $dbh->prepare(QUERY_ARTIST);
+
+my $where = join 'AND ', map { "$_ like ? " } keys %{ $SOURCE->{$METHOD}->{rskey} };
+my $sth = $dbh->prepare(QUERY . $where);
 my $size;
+
+print M3U_HEADER;
 for my $q (@$response)
 {
-    $sth->execute($q);
+    $sth->execute(values %$q);
     while (my $row = $sth->fetchrow_hashref)
     {
-        print Dumper($row), "\n";
+        printf M3U_EXTINF, $row->{length}, $row->{artist}, $row->{title};
+        print $row->{path}, "\n\n";
         $size += $row->{filesize};
-        if ($MAXSIZE && $size > $MAXSIZE)
+        if ($MAXSIZE && $size > $MAXSIZE * MEGABYTE)
         {
             warn "max file size of $MAXSIZE reached";
             exit 0
@@ -77,44 +86,25 @@ for my $q (@$response)
     }
 }
 
-
-#my $update = $dbh->prepare(UPDATE);
-#my $delete = $dbh->prepare(DELETE);
-#
-
-
 sub request
 {
     my $method = shift;
     my $query = shift;
-    warn Dumper({method => $method, %$query});
     my $ret = $LFM->request(method => lc $method, %$query);
 
-    # searching for our addressed list
-    while (ref $ret eq 'HASH')
-    {
-        my $key = shift @{ $SOURCE->{$method}->{rkey} };
-        warn $key;
-        $ret = $ret->{$key};
-    }
-    print Dumper $ret;
-
-    # getting our tag(s) from list
     my @list;
-    for my $item (@$ret)
+    # searching for our addressed list
+    for my $item (@{ Dive($ret, @{ $SOURCE->{$method}->{rkey} }) })
     {
-        $item = $item->{$_} for @{ $SOURCE->{$method}->{rkey} };
-        print Dumper $item;
-        push @list, $item;
+        my %track;
+        my $rskey = $SOURCE->{$method}->{rskey};
+
+        # fetching values from nested hash
+        $track{$_} = Dive($item, @{ $rskey->{$_} })
+            for (keys %$rskey);
+
+        push @list, \%track;
     }
+
     return \@list;
 }
-
-sub ArtistGetSimilar
-{
-};
-sub UserGetTopArtists {};
-sub UsergetLovedTracks {};
-sub UserGetRecommendedArtists {};
-sub UserGetRecentTracks {};
-

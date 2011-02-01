@@ -12,12 +12,13 @@ CREATE TABLE IF NOT EXISTS files
     path VARCHAR PRIMARY KEY,
     artist VARCHAR,
     title VARCAHR,
-    filesize INTEGER
+    filesize INTEGER,
+    length INTEGER
 )
 EOF
 
 use constant UPDATE => <<EOF;
-INSERT OR REPLACE INTO files (path, artist, title, filesize) VALUES (?,?,?,?)
+INSERT OR REPLACE INTO files (path, artist, title, filesize, length) VALUES (?,?,?,?,?)
 EOF
 
 use constant DELETE => <<EOF;
@@ -123,7 +124,8 @@ sub add_file
     my $artist = $data->{tags}->{TPE1};
     my $title = $data->{tags}->{TIT2};
     my $size = $data->{info}->{file_size};
+    my $length = ($data->{info}->{song_length_ms} || 0) / 1000;
 
     print '+', $file_rel, "\n";
-    $update->execute($file_rel, $artist, $title, $size);
+    $update->execute($file_rel, $artist, $title, $size, $length);
 }

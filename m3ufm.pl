@@ -8,7 +8,7 @@ use constant API_SECRET => '1eb39de237529c017494da040ff835a7';
 use File::Spec;
 use Cwd 'abs_path';
 use Net::LastFM;
-use Data::Diver 'Dive';
+use Data::Diver qw( Dive DiveDie );
 use Readonly;
 use DBI;
 
@@ -40,17 +40,42 @@ Readonly my %SOURCE =>
             artist => [ artist => 'name'],
             title => [ 'name'],
         }
-    }
+    },
+    'User.getTopArtists' =>
+    {
+        alias => 'ua',
+        key => 'user',
+        opt => 'period',
+        rkey => [ topartists => 'artist' ],
+        rskey =>
+        {
+            artist => [ 'name' ],
+        }
+   },
 );
 
-sub usage { "$0 path/to/music/directory [ " . (join ', ', map { "$_|$SOURCE{$_}->{alias}" } keys %SOURCE) . ' ] [size]' };
+sub usage
+{
+   my $parms = join ', ', map {
+    "$_|$SOURCE{$_}->{alias}" . ($SOURCE{$_}->{opt} ? "($SOURCE{$_}->{opt})" : "")
+   } keys %SOURCE;
+   return "$0 path/to/music/directory [ $parms ] [size]";
+};
 
 my $root = abs_path shift @ARGV;
 my ($src, $query, $maxsize) = @ARGV;
+
+die usage
+    unless $query;
+
+$src =~ s/\(([^\)]*)\)//;
+my $opt = $1;
+
 my $method = $SOURCE{$src} ? $src : (grep { $SOURCE{$_}->{alias} eq $src } keys %SOURCE)[0];
 
 die usage
-    unless $query and $method;
+    unless $method;
+
 
 print M3U_HEADER;
 
@@ -61,12 +86,21 @@ my $lastfm = Net::LastFM->new(
 my $dbh = DBI->connect('dbi:SQLite:dbname=' . DBFILE ,'','');
 
 
-my $response = $lastfm->request(method => lc $method, $SOURCE{$method}->{key} => $query);
+my %req = (method => lc $method, $SOURCE{$method}->{key} => $query);
+
+$req{$SOURCE{$method}->{opt}} = $opt
+    if $opt and $SOURCE{$method}->{opt};
+
+my $response = $lastfm->request(%req);
+
 my $sth = $dbh->prepare(QUERY . join 'AND ', map { "$_ like ? " } keys %{ $SOURCE{$method}->{rskey} });
 
-
+# use Data::Dumper; warn Dumper($response);
 my $size;
-for my $item (@{ Dive($response, @{ $SOURCE{$method}->{rkey} }) })
+my $list = Dive($response, @{ $SOURCE{$method}->{rkey} })
+    or DiveDie;
+
+for my $item (@$list)
 {
     my %track;
     my $rskey = $SOURCE{$method}->{rskey};

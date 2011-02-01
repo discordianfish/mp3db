@@ -9,9 +9,8 @@ use File::Spec;
 use Cwd 'abs_path';
 use Net::LastFM;
 use Data::Diver 'Dive';
+use Readonly;
 use DBI;
-
-#use Data::Dumper;
 
 use constant DBFILE => 'files.db';
 use constant QUERY => 'SELECT path, artist, title, filesize, length FROM files WHERE ';
@@ -19,8 +18,8 @@ use constant MEGABYTE => '1048576';
 use constant M3U_HEADER => '#EXTM3U';
 use constant M3U_EXTINF => '#EXTINF:%d,%s - %s' . "\n"; #secs, artist, title
 
-my $SOURCE =
-{
+Readonly my %SOURCE =>
+(
     'Artist.getSimilar' =>
     {
         alias => 'as',
@@ -42,69 +41,51 @@ my $SOURCE =
             title => [ 'name'],
         }
     }
-};
-sub usage { "$0 path/to/music/directory [ " . (join ', ', map { "$_|$SOURCE->{$_}->{alias}" } keys %$SOURCE) . ' ] [size]' };
+);
 
-my ($ROOT, $SRC, $QUERY, $MAXSIZE) = @ARGV;
+sub usage { "$0 path/to/music/directory [ " . (join ', ', map { "$_|$SOURCE{$_}->{alias}" } keys %SOURCE) . ' ] [size]' };
+
+my $root = abs_path shift @ARGV;
+my ($src, $query, $maxsize) = @ARGV;
+my $method = $SOURCE{$src} ? $src : (grep { $SOURCE{$_}->{alias} eq $src } keys %SOURCE)[0];
 
 die usage
-    unless $QUERY;
+    unless $query and $method;
 
-my $METHOD = $SOURCE->{$SRC} ? $SRC : (grep { $SOURCE->{$_}->{alias} eq $SRC } keys %$SOURCE)[0]
-    or die usage;
+print M3U_HEADER;
 
-$ROOT = abs_path $ROOT;
-
-my $LFM = Net::LastFM->new(
+my $lastfm = Net::LastFM->new(
     api_key    => API_KEY,
     api_secret => API_SECRET,
 );
-
-
-my $response = request($METHOD => { $SOURCE->{$METHOD}->{key} => $QUERY });
-
 my $dbh = DBI->connect('dbi:SQLite:dbname=' . DBFILE ,'','');
 
-my $where = join 'AND ', map { "$_ like ? " } keys %{ $SOURCE->{$METHOD}->{rskey} };
-my $sth = $dbh->prepare(QUERY . $where);
-my $size;
 
-print M3U_HEADER;
-for my $q (@$response)
+my $response = $lastfm->request(method => lc $method, $SOURCE{$method}->{key} => $query);
+my $sth = $dbh->prepare(QUERY . join 'AND ', map { "$_ like ? " } keys %{ $SOURCE{$method}->{rskey} });
+
+
+my $size;
+for my $item (@{ Dive($response, @{ $SOURCE{$method}->{rkey} }) })
 {
-    $sth->execute(values %$q);
+    my %track;
+    my $rskey = $SOURCE{$method}->{rskey};
+
+    # fetching values from nested hash
+    $track{$_} = Dive($item, @{ $rskey->{$_} })
+        for (keys %$rskey);
+
+    $sth->execute(values %track);
     while (my $row = $sth->fetchrow_hashref)
     {
         printf M3U_EXTINF, $row->{length}, $row->{artist}, $row->{title};
         print $row->{path}, "\n\n";
         $size += $row->{filesize};
-        if ($MAXSIZE && $size > $MAXSIZE * MEGABYTE)
+        if ($maxsize && $size > $maxsize * MEGABYTE)
         {
-            warn "max file size of $MAXSIZE reached";
+            warn "max file size of $maxsize reached";
             exit 0
         }
     }
-}
 
-sub request
-{
-    my $method = shift;
-    my $query = shift;
-    my $ret = $LFM->request(method => lc $method, %$query);
-
-    my @list;
-    # searching for our addressed list
-    for my $item (@{ Dive($ret, @{ $SOURCE->{$method}->{rkey} }) })
-    {
-        my %track;
-        my $rskey = $SOURCE->{$method}->{rskey};
-
-        # fetching values from nested hash
-        $track{$_} = Dive($item, @{ $rskey->{$_} })
-            for (keys %$rskey);
-
-        push @list, \%track;
-    }
-
-    return \@list;
 }

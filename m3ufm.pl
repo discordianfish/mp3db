@@ -9,6 +9,7 @@ use File::Spec;
 use Cwd 'abs_path';
 use Net::LastFM;
 use Data::Diver qw( Dive DiveDie );
+use List::Util 'shuffle';
 use Readonly;
 use DBI;
 
@@ -96,10 +97,10 @@ my $response = $lastfm->request(%req);
 my $sth = $dbh->prepare(QUERY . join 'AND ', map { "$_ like ? " } keys %{ $SOURCE{$method}->{rskey} });
 
 # use Data::Dumper; warn Dumper($response);
-my $size;
 my $list = Dive($response, @{ $SOURCE{$method}->{rkey} })
     or DiveDie;
 
+my @matched_files;
 for my $item (@$list)
 {
     my %track;
@@ -110,16 +111,20 @@ for my $item (@$list)
         for (keys %$rskey);
 
     $sth->execute(values %track);
-    while (my $row = $sth->fetchrow_hashref)
-    {
-        printf M3U_EXTINF, $row->{length}, $row->{artist}, $row->{title};
-        print $row->{path}, "\n\n";
-        $size += $row->{filesize};
-        if ($maxsize && $size > $maxsize * MEGABYTE)
-        {
-            warn "max file size of $maxsize reached";
-            exit 0
-        }
-    }
 
+    push @matched_files, $_
+        while $_ = $sth->fetchrow_hashref;
 }
+
+my $size;
+for my $file
+(
+    sort { $a->{path} cmp $b->{path} } 
+        grep { ($size += $_->{filesize}) < $maxsize * MEGABYTE }
+            shuffle @matched_files
+)
+{
+    printf M3U_EXTINF, $file->{length} || 0, $file->{artist} || '', $file->{title} || '';
+    print $file->{path}, "\n\n";
+}
+

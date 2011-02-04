@@ -42,8 +42,10 @@ use Proc::Daemon;
 
 use Data::Dumper;
 
-my $ROOT = abs_path shift
+my $ROOT = shift
     or die "$0 path/to/music/directory [scan|watch]";
+
+$ROOT = abs_path $ROOT;
 
 my $dbh = DBI->connect('dbi:SQLite:dbname=' . DBFILE ,'','');
 my $log = Log::Log4perl->easy_init('DEBUG');

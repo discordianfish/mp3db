@@ -2,6 +2,30 @@
 use strict;
 use warnings;
 
+=head1 NAME
+
+m3ufm.pl - generates m3u playlists from files in sqlite database
+
+=head1 SYNOPSIS
+
+m3ufm.pl path function[(params)] name [size]
+
+ Options:
+   path         the path to your music directory
+   function     a query function with optional params
+   name         the target the function operates on
+   size         optional size in MB to limit playlist length
+
+=head1 EXAMPLE
+
+m3ufm.pl /data/music 'User.getTopArtists(6month)' discordianfish 4000
+
+This will fetch discordianfish's the top artists in the last 6 month,
+queries the database to get all files matching those artists and return
+a playlist with max size (all files aggregated) of 4GB.
+
+=cut
+ 
 use constant API_KEY => '113fce0260f113d9f09ecec04b9e9d97';
 use constant API_SECRET => '1eb39de237529c017494da040ff835a7';
 
@@ -10,6 +34,7 @@ use Cwd 'abs_path';
 use Net::LastFM;
 use Data::Diver qw( Dive DiveDie );
 use List::Util 'shuffle';
+use Pod::Usage;
 use Readonly;
 use DBI;
 
@@ -57,18 +82,22 @@ Readonly my %SOURCE =>
 
 sub usage
 {
-   my $parms = join ', ', map {
+   pod2usage(
+    -verbose => 99,
+    -sections => [qw(SYNOPSIS EXAMPLE)],
+    -msg => "$0 Available functions: " . join ', ', map {
     "$_|$SOURCE{$_}->{alias}" . ($SOURCE{$_}->{opt} ? "($SOURCE{$_}->{opt})" : "")
-   } keys %SOURCE;
-   return "$0 path/to/music/directory [ $parms ] [size]";
+   } keys %SOURCE)
 };
 
-my $root = abs_path shift @ARGV;
+my $root = shift @ARGV;
 my ($src, $query, $maxsize) = @ARGV;
+#die "src: $src, query: $query, maxsize: $maxsize";
 
 die usage
     unless $query;
 
+$root = abs_path $root;
 $src =~ s/\(([^\)]*)\)//;
 my $opt = $1;
 
@@ -119,9 +148,11 @@ for my $item (@$list)
 my $size;
 for my $file
 (
-    sort { $a->{path} cmp $b->{path} } 
-        grep { ($size += $_->{filesize}) < $maxsize * MEGABYTE }
-            shuffle @matched_files
+    $maxsize ?
+        sort { $a->{path} cmp $b->{path} } 
+            grep { ($size += $_->{filesize}) < $maxsize * MEGABYTE }
+                shuffle @matched_files
+    : @matched_files
 )
 {
     printf M3U_EXTINF, $file->{length} || 0, $file->{artist} || '', $file->{title} || '';

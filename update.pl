@@ -2,6 +2,35 @@
 use strict;
 use warnings;
 
+=head1 NAME
+
+update.pl - creates database
+
+=head1 SYNOPSIS
+
+update.pl path [scan|watch]
+
+ Options:
+   path         the path to your music directory
+   'scan'       recursively reading all files in path
+   'watch'      setup inotify watches for directories in path
+
+=head1 DESCRIPTION
+creates a database by recursively reading all files in a directory
+or by setting up inotify watches for all directories.
+
+In watch mode it will update metadata for each new file in (sub)directory
+and remove metadata if files get moved out or deleted.
+
+
+=head1 EXAMPLE
+
+update.pl /data/music/ scan
+
+It will scan /data/music and generate a database (files.sql) out of it.
+
+=cut
+
 use constant API_KEY => '113fce0260f113d9f09ecec04b9e9d97';
 use constant API_SECRET => '1eb39de237529c017494da040ff835a7';
 

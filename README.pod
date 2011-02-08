@@ -1,0 +1,21 @@
+=head1 NAME
+
+mp3db - tools to create a metadata database from audio files and create playlists out of it
+
+=head1 CONTENTS
+
+=head2 update.pl
+
+creates a database by:
+    - recursively reading all files in a directory
+    - setting up inotify watches for all directories
+
+=head2 m3ufm.pl
+
+creates a playlist from database and query functions
+
+=head1 EXAMPLES
+
+- first create a musicdb, see update.pl
+- then create a playlist, see m3ufm.pl
+

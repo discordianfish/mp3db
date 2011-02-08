@@ -16,6 +16,9 @@ creates a playlist from database and query functions
 
 =head1 EXAMPLES
 
-- first create a musicdb, see update.pl
-- then create a playlist, see m3ufm.pl
+=over 5
+
+=item first create a musicdb, see update.pl
+
+=item then create a playlist, see m3ufm.pl
 

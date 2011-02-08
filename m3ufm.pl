@@ -41,7 +41,7 @@ use DBI;
 use constant DBFILE => 'files.db';
 use constant QUERY => 'SELECT path, artist, title, filesize, length FROM files WHERE ';
 use constant MEGABYTE => '1048576';
-use constant M3U_HEADER => '#EXTM3U';
+use constant M3U_HEADER => "#EXTM3U\n";
 use constant M3U_EXTINF => '#EXTINF:%d,%s - %s' . "\n"; #secs, artist, title
 
 Readonly my %SOURCE =>
@@ -156,6 +156,6 @@ for my $file
 )
 {
     printf M3U_EXTINF, $file->{length} || 0, $file->{artist} || '', $file->{title} || '';
-    print $file->{path}, "\n\n";
+    print $file->{path}, "\n";
 }
 
